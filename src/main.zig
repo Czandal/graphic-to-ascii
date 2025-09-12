@@ -1,20 +1,28 @@
 const std = @import("std");
 const io = std.io;
 
-var stdout_buffer: [1024]u8 = undefined;
+var stdout_buffer: [512]u8 = undefined;
 var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
 const stdout = &stdout_writer.interface;
 
-pub fn rgb_to_sign(rgb: u32) u8 {
-    const r: u32 = (rgb & (@as(u32, 255) << 24)) >> 24;
-    const g: u32 = (rgb & (@as(u32, 255) << 16)) >> 16;
-    const b: u32 = (rgb & (@as(u32, 255) << 8)) >> 8;
+pub fn read_red(rgb: u32) u32 {
+    return (rgb & (@as(u32, 255) << 24)) >> 24;
+}
 
+pub fn read_blue(rgb: u32) u32 {
+    return (rgb & (@as(u32, 255) << 16)) >> 16;
+}
+
+pub fn read_green(rgb: u32) u32 {
+    return (rgb & (@as(u32, 255) << 8)) >> 8;
+}
+
+pub fn rgb_to_sign(red: u32, green: u32, blue: u32) u8 {
     // 16 characters, from darkest to lightest
     const ascii: [16]u8 = [_]u8{ '@', 'B', '#', '0', '+', '_', '-', ':', '~', '=', '^', '*', '!', '.', '`', ' ' };
 
     // Compute brightness: r + g + b normalized to [0, 15]
-    const sum = (r + g + b);
+    const sum = (red + green + blue);
     const idx = @min(15, (sum * 16) / (255 * 3)); // Multiplied by 16 for full range, clamp to 15 just in case
 
     return ascii[idx];
@@ -70,8 +78,9 @@ pub const BitMap = struct {
                 const b = buffer[row_start + 3 * j];
                 const g = buffer[row_start + 3 * j + 1];
                 const r = buffer[row_start + 3 * j + 2];
-
-                pixels[i * width + j] = (@as(u32, r) << 24) + (@as(u32, g) << 16) + (@as(u32, b) << 8);
+                // NOTE: bytes are written upside down
+                const y = height - i - 1;
+                pixels[y * width + j] = (@as(u32, r) << 24) + (@as(u32, g) << 16) + (@as(u32, b) << 8);
             }
         }
 
@@ -88,13 +97,29 @@ pub const BitMap = struct {
     }
 };
 
-pub fn print_ascii(bmp: *const BitMap) !void {
+pub fn print_ascii(bmp: *const BitMap, cell_size: u32) !void {
     var i: u32 = 0;
-    while (i < bmp.*.height) : (i += 1) {
+    while (i < bmp.*.height) : (i += cell_size) {
         var j: u32 = 0;
-        while (j < bmp.*.width) : (j += 1) {
-            const y = bmp.*.height - i;
-            const sign = rgb_to_sign(bmp.*.pixels[(y - 1) * bmp.*.width + j]);
+        while (j < bmp.*.width) : (j += cell_size) {
+            // read next NxN cell and avg their red green blue values
+            var sum_red: u32 = 0;
+            var sum_green: u32 = 0;
+            var sum_blue: u32 = 0;
+
+            var cells: u32 = 0;
+            var k: u32 = i;
+            while(k < @min(bmp.*.height, i + cell_size)): (k += 1) {
+                var l: u32 = j;
+                while (l < @min(bmp.*.width, j + cell_size)): (l += 1) {
+                    const rgb = bmp.*.pixels[k * bmp.*.width + l];
+                    cells += 1;
+                    sum_red += read_red(rgb);
+                    sum_green += read_green(rgb);
+                    sum_blue += read_blue(rgb);
+                }
+            }
+            const sign = rgb_to_sign(sum_red / cells, sum_green / cells, sum_blue / cells);
             try stdout.writeByte(sign);
         }
         try stdout.writeByte('\n');
@@ -111,6 +136,9 @@ pub fn main() !void {
         return;
     };
 
+    const cell_size_str = args.next() orelse "4";
+    const cell_size: u32 = try std.fmt.parseInt(u32, cell_size_str, 10);
+
     // Open the file for reading
     const file = try std.fs.cwd().openFile(file_path, .{});
     defer file.close();
@@ -126,5 +154,5 @@ pub fn main() !void {
     const bmp = try BitMap.init(buffer, allocator);
     defer bmp.deinit();
 
-    try print_ascii(&bmp);
+    try print_ascii(&bmp, cell_size);
 }
