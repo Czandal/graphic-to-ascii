@@ -1,6 +1,10 @@
 const std = @import("std");
 const io = std.io;
 
+var stdout_buffer: [1024]u8 = undefined;
+var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+const stdout = &stdout_writer.interface;
+
 pub fn rgb_to_sign(rgb: u32) u8 {
     const r: u32 = (rgb & (@as(u32, 255) << 24)) >> 24;
     const g: u32 = (rgb & (@as(u32, 255) << 16)) >> 16;
@@ -41,11 +45,14 @@ pub const BitMap = struct {
         const width = std.mem.bytesToValue(u32, buffer[18..22]);
         const height = std.mem.bytesToValue(u32, buffer[22..26]);
         const bit_depth = std.mem.bytesToValue(u16, buffer[28..30]);
+        // TODO: Support different bit depths
+        if (bit_depth != 24) {
+            return error.UnsupportedBitDepth;
+        }
 
         const bytes_per_row_unpadded = width * bit_depth / 8;
         const padding = (4 - (bytes_per_row_unpadded % 4)) % 4;
         const bytes_per_row = padding + bytes_per_row_unpadded;
-        const usable_bytes_declared = width * height * bit_depth / 8;
         // does offset fit?
         if (pixels_offset >= buffer.len) {
             return error.InvalidPixelsOffset;
@@ -53,11 +60,7 @@ pub const BitMap = struct {
         if (bytes_per_row * height + pixels_offset > buffer.len) {
             return error.DeclaredMorePixelsThanPossible;
         }
-        const pixels = try alloc.alloc(u32, usable_bytes_declared * 8 / bit_depth);
-        // TODO: Support different bit depths
-        if (bit_depth != 24) {
-            return error.UnsupportedBitDepth;
-        }
+        const pixels = try alloc.alloc(u32, width * height);
         var row_start = pixels_offset;
         var i: u32 = 0;
         while (i < height) : (i += 1) {
@@ -68,7 +71,7 @@ pub const BitMap = struct {
                 const g = buffer[row_start + 3 * j + 1];
                 const r = buffer[row_start + 3 * j + 2];
 
-                pixels[i * height + j] = (@as(u32, r) << 24) + (@as(u32, g) << 16) + (@as(u32, b) << 8);
+                pixels[i * width + j] = (@as(u32, r) << 24) + (@as(u32, g) << 16) + (@as(u32, b) << 8);
             }
         }
 
@@ -86,7 +89,6 @@ pub const BitMap = struct {
 };
 
 pub fn print_ascii(bmp: *const BitMap) !void {
-    const stdout = std.io.getStdOut().writer();
     var i: u32 = 0;
     while (i < bmp.*.height) : (i += 1) {
         var j: u32 = 0;
@@ -101,12 +103,13 @@ pub fn print_ascii(bmp: *const BitMap) !void {
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
-    const args = std.os.argv;
-    if (args.len < 2) {
+    // Replace argv approach with:
+    var args = std.process.args();
+    _ = args.skip(); // skip program name
+    const file_path = args.next() orelse {
         std.debug.print("Please provide filepath to BMP file\n", .{});
         return;
-    }
-    const file_path = std.mem.span(args[1]);
+    };
 
     // Open the file for reading
     const file = try std.fs.cwd().openFile(file_path, .{});
