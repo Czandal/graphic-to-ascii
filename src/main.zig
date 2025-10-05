@@ -109,9 +109,9 @@ pub fn print_ascii(bmp: *const BitMap, cell_size: u32) !void {
 
             var cells: u32 = 0;
             var k: u32 = i;
-            while(k < @min(bmp.*.height, i + cell_size)): (k += 1) {
+            while (k < @min(bmp.*.height, i + cell_size)) : (k += 1) {
                 var l: u32 = j;
-                while (l < @min(bmp.*.width, j + cell_size)): (l += 1) {
+                while (l < @min(bmp.*.width, j + cell_size)) : (l += 1) {
                     const rgb = bmp.*.pixels[k * bmp.*.width + l];
                     cells += 1;
                     sum_red += read_red(rgb);
@@ -124,6 +124,7 @@ pub fn print_ascii(bmp: *const BitMap, cell_size: u32) !void {
         }
         try stdout.writeByte('\n');
     }
+    try stdout.flush();
 }
 
 pub fn main() !void {
