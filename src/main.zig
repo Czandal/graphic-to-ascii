@@ -1,32 +1,10 @@
 const std = @import("std");
 const io = std.io;
+const color = @import("color.zig");
 
 var stdout_buffer: [512]u8 = undefined;
 var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
 const stdout = &stdout_writer.interface;
-
-pub fn read_red(rgb: u32) u32 {
-    return (rgb & (@as(u32, 255) << 24)) >> 24;
-}
-
-pub fn read_blue(rgb: u32) u32 {
-    return (rgb & (@as(u32, 255) << 16)) >> 16;
-}
-
-pub fn read_green(rgb: u32) u32 {
-    return (rgb & (@as(u32, 255) << 8)) >> 8;
-}
-
-pub fn rgb_to_sign(red: u32, green: u32, blue: u32) u8 {
-    // 16 characters, from darkest to lightest
-    const ascii: [16]u8 = [_]u8{ '@', 'B', '#', '0', '+', '_', '-', ':', '~', '=', '^', '*', '!', '.', '`', ' ' };
-
-    // Compute brightness: r + g + b normalized to [0, 15]
-    const sum = (red + green + blue);
-    const idx = @min(15, (sum * 16) / (255 * 3)); // Multiplied by 16 for full range, clamp to 15 just in case
-
-    return ascii[idx];
-}
 
 pub const BitMap = struct {
     // all pixels represented in RGB (last 8 bits are left as zeros)
@@ -114,12 +92,12 @@ pub fn print_ascii(bmp: *const BitMap, cell_size: u32) !void {
                 while (l < @min(bmp.*.width, j + cell_size)) : (l += 1) {
                     const rgb = bmp.*.pixels[k * bmp.*.width + l];
                     cells += 1;
-                    sum_red += read_red(rgb);
-                    sum_green += read_green(rgb);
-                    sum_blue += read_blue(rgb);
+                    sum_red += color.read_red(rgb);
+                    sum_green += color.read_green(rgb);
+                    sum_blue += color.read_blue(rgb);
                 }
             }
-            const sign = rgb_to_sign(sum_red / cells, sum_green / cells, sum_blue / cells);
+            const sign = color.rgb_to_sign(sum_red / cells, sum_green / cells, sum_blue / cells);
             try stdout.writeByte(sign);
         }
         try stdout.writeByte('\n');
